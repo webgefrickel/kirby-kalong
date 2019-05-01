@@ -7,14 +7,162 @@ use Response;
 use Kirby\Cms\App;
 use Kirby\Toolkit\Html;
 use Kirby\Toolkit\Tpl;
+use Kirby\Data\YAML;
 
+use Twig_Compiler;
 use Twig_Environment;
-use Twig_SimpleFunction;
-use Twig_SimpleFilter;
-use Twig_SimpleTest;
-use Twig_Extension_Debug;
 use Twig_Error;
+use Twig_Extension_Debug;
 use Twig_Loader_Filesystem;
+use Twig_Node;
+use Twig_NodeOutputInterface;
+use Twig_Node_Expression;
+use Twig_SimpleFilter;
+use Twig_SimpleFunction;
+use Twig_SimpleTest;
+use Twig_Token;
+use Twig_TokenParser;
+
+
+/**
+ * Classes for the render-tag in twig (fractal-support)
+ *
+ * @package  Kirby Twig Plugin
+ * @author   Steffen Rademacker <kontakt@webgefrickel.de>
+ */
+class RenderPattern_Node extends Twig_Node implements Twig_NodeOutputInterface
+{
+
+    public function __construct(Twig_Node_Expression $expr, Twig_Node_Expression $variables = null, $merge = null, $lineno, $tag = null)
+    {
+        $nodes = array('expr' => $expr);
+        if ($variables !== null) {
+            $nodes['variables'] = $variables;
+        }
+
+        parent::__construct($nodes, [ 'merge' => (bool) $merge ], $lineno, $tag);
+    }
+
+    public function compile(Twig_Compiler $compiler)
+    {
+        $compiler->addDebugInfo($this);
+        $this->addGetTemplate($compiler);
+        $compiler->raw('->display(');
+        $this->addTemplateArguments($compiler);
+        $compiler->raw(");\n");
+    }
+
+    protected function addGetTemplate(Twig_Compiler $compiler)
+    {
+        $patternString = $this->getNode('expr')->attributes['value'];
+        $parts = explode('--', $patternString);
+        $this->pattern = trim($patternString, '@');
+        $this->variant = null;
+        $this->file = null;
+
+        if (count($parts) === 2) {
+            $this->pattern = trim($parts[0], '@');
+            $this->variant = $parts[1];
+        }
+
+        $this->file = $this->pattern . '.html';
+
+        $compiler
+            ->write('$this->loadTemplate(')
+            ->repr('@pattern/' . $this->file)
+            ->raw(', ')
+            ->repr($this->getTemplateName())
+            ->raw(', ')
+            ->repr($this->getTemplateLine())
+            ->raw(')');
+    }
+
+    protected function addTemplateArguments(Twig_Compiler $compiler)
+    {
+        $kirby = Kirby::instance();
+        $patternName = '';
+
+        if ($this->variant !== null) {
+            $patternDataFile = $kirby->option('kalong') . $this->pattern . '--' . $this->variant . '.yml';
+            $patternName = $this->pattern . '--' . $this->variant;
+
+            // try the default variant, if the variant does not exist
+            if (!file_exists($patternDataFile) && $this->variant !== null) {
+                $patternName = $this->pattern . '--default';
+            }
+        } else {
+            $patternName = $this->pattern;
+        }
+
+        $defaultData = kalong($patternName);
+
+        // we always merge context over default data, if merge is false,
+        // we just ignore the default data and merge context + variables
+        if (!$this->getAttribute('merge')) {
+            if (!$this->hasNode('variables')) {
+                $compiler
+                    ->raw('array_merge(')
+                    ->repr($defaultData)
+                    ->raw(', $context)');
+            } else {
+                $compiler
+                    ->raw('array_merge($context, ')
+                    ->subcompile($this->getNode('variables'))
+                    ->raw(')');
+            }
+        } else {
+            if (!$this->hasNode('variables')) {
+                $compiler
+                    ->raw('array_merge(')
+                    ->repr($defaultData)
+                    ->raw(', $context)');
+            } else {
+                $compiler
+                    ->raw('array_merge(')
+                    ->repr($defaultData)
+                    ->raw(', $context, ')
+                    ->subcompile($this->getNode('variables'))
+                    ->raw(')');
+            }
+        }
+    }
+}
+
+
+class RenderPattern_TokenParser extends Twig_TokenParser
+{
+
+    public function parse(Twig_Token $token)
+    {
+        $expr = $this->parser->getExpressionParser()->parseExpression();
+        list($variables, $merge) = $this->parseArguments();
+        return new RenderPattern_Node($expr, $variables, $merge, $token->getLine(), $this->getTag());
+    }
+
+    protected function parseArguments()
+    {
+        $stream = $this->parser->getStream();
+        $variables = null;
+        $merge = false;
+
+        if ($stream->nextIf(Twig_Token::PUNCTUATION_TYPE, ',')) {
+            $variables = $this->parser->getExpressionParser()->parseExpression();
+        }
+
+        if ($stream->nextIf(Twig_Token::PUNCTUATION_TYPE, ',')) {
+            $stream->expect(Twig_Token::NAME_TYPE, 'true');
+            $merge = true;
+        }
+
+        $stream->expect(Twig_Token::BLOCK_END_TYPE);
+        return array($variables, $merge);
+    }
+
+    public function getTag()
+    {
+        return 'render';
+    }
+}
 
 
 /**
@@ -118,6 +266,8 @@ class Environment
                 'templates' => $this->templateDir,
                 'snippets' => kirby()->roots()->snippets(),
                 'plugins' => kirby()->roots()->plugins(),
+                'assets' => kirby()->roots()->assets(),
+                'pattern' => kirby()->option('kalong'),
             ],
             'paths' => [],
             'function' => $this->cleanNames(array_merge(
@@ -191,6 +341,15 @@ class Environment
         foreach ($options['test'] as $name => $func) {
             $this->addCallable('test', $name, $func);
         }
+
+        // add the render node needed for kalong/fractal
+        $this->twig->addTokenParser(new RenderPattern_TokenParser());
+
+        // add the path filter and raw/safe-filter
+        $this->twig->addFilter(new Twig_SimpleFilter('safe', 'twig_raw_filter', array('is_safe' => array('html'))));
+        $this->twig->addFilter(new Twig_SimpleFilter('path', function($path) {
+            return '/assets/' . trim($path, '/');
+        }));
 
         // Make sure the instance is stored / overwritten
         static::$instance = $this;
