@@ -1,10 +1,14 @@
 {
-    "name": "mgfagency/kirby-twig",
-    "description": "Twig templating support for Kirby CMS",
+    "name": "webgefrickel/kirby-kalong",
+    "description": "Twig templating support for Kirby CMS with added support for fractal pattern usage as a companion to webgefrickel/kalong",
     "type": "kirby-plugin",
     "version": "1.0.10",
     "license": "MIT",
     "authors": [
+        {
+            "name": "Steffen Rademacker",
+            "email": "kontakt@webgefrickel.de"
+        },
         {
             "name": "Christian Zehetner",
             "email": "christian@mgf.at"
