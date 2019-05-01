@@ -29,7 +29,7 @@ class Template extends \Kirby\Cms\Template
         $this->twig = new Environment($viewPath);
         $this->kirby = $kirby;
     }
-    
+
     public function extension(): string
     {
         return 'twig';
