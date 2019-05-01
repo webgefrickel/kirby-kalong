@@ -20,8 +20,9 @@ class Plugin
      *
      *  * Example usage:
      *
-     *     <?php echo twig('Hello {{ who }}', ['who'=>'World']) ?>
-     *     <?php echo twig('@snippets/header.twig', ['title'=>'Home page']) ?>
+     *     <?php echo twig('Hello {{ who }}', ['who' => 'World']) ?>
+     *     <?php echo twig('@snippets/header.twig', ['title' => 'Home page']) ?>
+     *     <?php echo twig('@heading', ['text' => 'Hello World']) ?>
      *
      * Note: in Twig templates, you should use the `include` tag or function instead.
      *
@@ -29,17 +30,48 @@ class Plugin
      * @param array  $userData - data to pass as variables to the template
      * @return string
      */
-    static public function render($template, $userData)
+    static public function render($patternString, $userData = [], $merge = false) {
     {
-        if (!is_string($template)) return '';
-        $path = strlen($template) <= 256 ? trim($template) : '';
-        $data = array_merge(Template::$data, is_array($userData) ? $userData : []);
-        $twig = Environment::instance();
+        if (!is_string($patternString)) return '';
+        $patternString = (strlen($patternString) <= 256) ? trim($patternString) : '';
+
+        $parts = explode('--', $patternString);
+        $pattern = trim($patternString, '@');
+        $variant = null;
+        $file = null;
+
+        if (count($parts) === 2) {
+            $pattern = trim($parts[0], '@');
+            $variant = $parts[1];
+        }
+
+        $file = $pattern . '.html';
+        $path = '@pattern/' . $file;
+
+        $defaultData = kalong(($variant) ? $pattern . '--' . $variant : $pattern);
+        $data = [];
+
+        if ($merge) {
+            if (!empty($userData)) {
+                $data = array_merge(Tpl::$data, $defaultData, $userData);
+            } else {
+                $data = array_merge(Tpl::$data, $defaultData);
+            }
+        } else {
+            if (!empty($userData)) {
+                $data = array_merge(Tpl::$data, $userData);
+            } else {
+                $data = array_merge(Tpl::$data, $defaultData);
+            }
+        }
+
+        $twig = TwigEnv::instance();
 
         // treat template as a path only if it *looks like* a Twig template path
         if (Str::startsWith($path, '@') || Str::endsWith(strtolower($path), '.twig')) {
             return $twig->renderPath($path, $data);
         }
-        return $twig->renderString($template, $data);
+
+        return $twig->renderString($patternString, $data);
     }
 }
