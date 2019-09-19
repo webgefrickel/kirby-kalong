@@ -1,35 +1,32 @@
 <?php
 
-function kalong($pattern = null) {
+function kalong($pattern = null, $page = null) {
+  $path = kirby()->option('kalong');
   $site = kirby()->site();
-  $pages = kirby()->site()->index();
-  $page = $pages->current();
-  $patternPath = kirby()->option('kalong');
+  $home = $site->homepage();
+  $page = ($page !== null) ? $page : $home;
 
   // load the default page data, and override anything in need of override
-  $globalData = YAML::decode(file_get_contents($patternPath . 'page.yml'));
-  $patternData = ($pattern !== null) ? YAML::decode(file_get_contents($patternPath . $pattern . '.yml')) : [];
+  $globalData = YAML::decode(file_get_contents($path . 'default.yml'));
+  $patternData = ($pattern !== null) ? YAML::decode(file_get_contents($path . $pattern . '.yml')) : [];
   $data = array_merge($globalData, $patternData);
-  $homepage = $pages->find('home');
 
   // debugging and deactivating styleguide
-  $data['debug'] = kirby()->option('debug');
-  $data['styleguide'] = false;
+  $data['config']['debug'] = kirby()->option('debug');
+  $data['config']['styleguide'] = false;
 
-  // global site data
-  $data['site']['modifiers'] = '';
-  $data['site']['dir'] = 'ltr';
-  $data['site']['lang'] = $site->language()->code();
-  $data['site']['title'] = $homepage->hometitle();
-  $data['site']['description'] = $homepage->description();
-  $data['site']['author'] = $homepage->hometitle();
+  // global data
+  $data['language'] = kirby()->language();
 
-  // page data
-  $data['page']['title'] = $page->title();
-  $data['page']['description'] = $page->description();
+  // global page data
+  $data['pageTitle'] = $page->title() . ' — ' . $home->seotitle();
+  $data['pageDescription'] = $page->seodescription();
 
-  // main navigation
-  $data['global']['nav'] = [];
+  // navigation and other objects
+  $data['nav'] = [];
+
+  // NOTE: you have to manually edit this file here to provide any
+  // global data you may need: navigation objects, footer, etc...
 
   return $data;
 }
